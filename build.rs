@@ -69,12 +69,15 @@ type PropertyTypes = HashMap<String, PropertyType>;
 
 /// Get the last segment of the module path, which is the struct name.
 pub fn struct_mod_n_name(path: &str) -> (String, String) {
-    return ("foo".to_string(), "Bar".to_string());
     let s = path.split("::").collect::<Vec<&str>>();
-    (
-        s[s.len() - 2].replace('.', ""),
-        s[s.len() - 1].replace('.', ""),
-    )
+    if s.len() > 2 {
+        (
+            s[s.len() - 2].replace('.', ""),
+            s[s.len() - 1].replace('.', ""),
+        )
+    } else {
+        ("DEFAULT".to_owned(), s[s.len() - 1].replace('.', ""))
+    }
 }
 
 pub fn build_property_types(prop_types: &PropertyTypes) -> impl Iterator<Item = Module> + '_ {
@@ -83,20 +86,25 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> impl Iterator<Item = 
     prop_types.iter().for_each(|(prop_type_name, prop_type)| {
         let (mod_name, struct_name) = struct_mod_n_name(prop_type_name);
 
-        let mut _struct = Struct::new(struct_name);
+        let mut _struct = Struct::new(struct_name).set_is_pub(true).to_owned();
 
         for (prop_name, prop) in &prop_type.properties {
             _struct.add_field(
                 Field::new(prop_name, &prop.primitive_type.as_rust_ty().to_string())
                     .set_is_pub(true)
-                    .add_doc(format!("/// Documentation: {}", prop.documentation))
+                    .add_doc(format!("/// Official documentation: [{}]({})", prop.documentation, prop.documentation))
                     .to_owned(),
             );
         }
 
         let module = modules
             .entry(mod_name.clone())
-            .or_insert(Module::new(mod_name.clone()))
+            .or_insert(
+                Module::new(mod_name.clone())
+                    .add_use_statement("use serde_json::Value;")
+                    .set_is_pub(true)
+                    .to_owned(),
+            )
             .add_struct(_struct)
             .to_owned();
         modules.insert(mod_name, module.to_owned());
@@ -116,9 +124,7 @@ fn main() {
     let property_types: PropertyTypes =
         serde_json::from_value(spec["PropertyTypes"].clone()).unwrap();
 
-    let mut module = Module::new("AWS")
-        .add_use_statement("use serde_json::Value;")
-        .to_owned();
+    let mut module = Module::new("AWS").set_is_pub(true).to_owned();
 
     for s in build_property_types(&property_types) {
         module.add_submodule(s);
