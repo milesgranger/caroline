@@ -138,27 +138,33 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
             .properties
             .iter()
             .map(|(prop_name, prop)| {
-                let mut type_ = prop
-                    .type_
-                    .clone()
-                    .unwrap_or_else(|| prop.primitive_type.as_rust_ty().to_string());
-
-                type_ = match type_.as_str() {
-                    "List" => format!(
+                let type_ = match prop.type_.as_ref().map(|v| v.as_str()) {
+                    Some("List") => format!(
                         "Vec<{}>",
-                        prop.primitive_item_type
+                        prop.item_type
                             .as_ref()
-                            .map(|v| v.as_rust_ty())
-                            .unwrap_or("String")
+                            .map(|v| v.as_str())
+                            .unwrap_or_else(|| {
+                                prop.primitive_item_type
+                                    .as_ref()
+                                    .map(|v| v.as_rust_ty())
+                                    .unwrap_or("String")
+                            })
                     ),
-                    "Map" => format!(
+                    Some("Map") => format!(
                         "HashMap<String, {}>",
-                        prop.primitive_item_type
+                        prop.item_type
                             .as_ref()
-                            .map(|v| v.as_rust_ty())
-                            .unwrap_or("String")
+                            .map(|v| v.as_str())
+                            .unwrap_or_else(|| {
+                                prop.primitive_item_type
+                                    .as_ref()
+                                    .map(|v| v.as_rust_ty())
+                                    .unwrap_or("String")
+                            })
                     ),
-                    _ => type_,
+                    Some(a) => a.to_string(),
+                    None => "String".to_string(),
                 };
 
                 strct.add_field(
@@ -188,13 +194,18 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
                 match md.get_submodule(mod_name).is_some() {
                     true => md.get_submodule_mut(mod_name).unwrap(),
                     false => {
-                        md.add_submodule(
-                            Module::new(mod_name.clone())
-                                .add_use_statement("use serde_json::Value;")
-                                .add_use_statement("use std::collections::HashMap;")
-                                .set_is_pub(true)
-                                .to_owned(),
-                        );
+                        let mut m = Module::new(mod_name.clone())
+                            .add_use_statement("use serde_json::Value;")
+                            .add_use_statement("use std::collections::HashMap;")
+                            .set_is_pub(true)
+                            .to_owned();
+
+                        // `Tag` struct is special
+                        if &meta.struct_name != "Tag" {
+                            m.add_use_statement("use crate::AWS::Tag::Tag;");
+                        }
+
+                        md.add_submodule(m);
                         md.get_submodule_mut(mod_name).unwrap()
                     }
                 }
