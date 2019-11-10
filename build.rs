@@ -45,6 +45,7 @@ impl Default for UpdateType {
     }
 }
 
+/// The property of a ResourceType or PropertyType
 #[derive(Serialize, Deserialize, Default)]
 pub struct Property {
     #[serde(alias = "Required")]
@@ -63,15 +64,17 @@ pub struct Property {
     primitive_item_type: Option<PrimitiveType>,
 }
 
+/// A Resource or Property Type
 #[derive(Serialize, Deserialize, Default)]
-pub struct PropertyType {
+pub struct Type {
     #[serde(alias = "Documentation", default)]
     documentation: String,
     #[serde(alias = "Properties", default)]
     properties: HashMap<String, Property>,
 }
 
-type PropertyTypes = HashMap<String, PropertyType>;
+/// Both Resource and Property Types
+type Types = HashMap<String, Type>;
 
 pub struct TypeMetadata {
     pub module_path: Vec<String>,
@@ -114,14 +117,14 @@ impl<'a> From<&'a str> for TypeMetadata {
 
 /// Get the last segment of the module path, which is the struct name.
 
-pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
+pub fn build_types(types: &Types) -> Module {
     let mut parent_module = Module::new("PropertyTypes")
         .set_is_pub(true)
         .add_attribute("#![allow(unused_imports, non_snake_case)]")
         .to_owned();
 
-    prop_types.iter().for_each(|(prop_type_name, prop_type)| {
-        let meta = TypeMetadata::from(prop_type_name.as_str());
+    types.iter().for_each(|(type_name, the_type)| {
+        let meta = TypeMetadata::from(type_name.as_str());
 
         let mut strct = Struct::new(&meta.struct_name)
             .set_is_pub(true)
@@ -137,18 +140,20 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
 
         let mut new_method_body = "Self { ".to_string();
 
-        let inner_self = prop_type
+        let inner_self = the_type
             .properties
             .iter()
-            .map(|(prop_name, prop)| {
-                let mut type_ = match prop.type_.as_ref().map(|v| v.as_str()) {
+            .map(|(property_name, property)| {
+                let mut type_ = match property.type_.as_ref().map(|v| v.as_str()) {
                     Some("List") => format!(
                         "Vec<{}>",
-                        prop.item_type
+                        property
+                            .item_type
                             .as_ref()
                             .map(|v| v.as_str())
                             .unwrap_or_else(|| {
-                                prop.primitive_item_type
+                                property
+                                    .primitive_item_type
                                     .as_ref()
                                     .map(|v| v.as_rust_ty())
                                     .unwrap_or("String")
@@ -156,37 +161,39 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
                     ),
                     Some("Map") => format!(
                         "HashMap<String, {}>",
-                        prop.item_type
+                        property
+                            .item_type
                             .as_ref()
                             .map(|v| v.as_str())
                             .unwrap_or_else(|| {
-                                prop.primitive_item_type
+                                property
+                                    .primitive_item_type
                                     .as_ref()
                                     .map(|v| v.as_rust_ty())
                                     .unwrap_or("String")
                             })
                     ),
                     Some(a) => a.to_string(),
-                    None => prop.primitive_type.as_rust_ty().to_string(),
+                    None => property.primitive_type.as_rust_ty().to_string(),
                 };
 
                 // If this param is not required.
-                if !prop.required {
+                if !property.required {
                     type_ = format!("Option<{}>", type_);
                 }
 
                 strct.add_field(
-                    Field::new(prop_name, &type_)
+                    Field::new(property_name, &type_)
                         .set_is_pub(true)
                         .add_doc(format!(
                             "/// Official documentation: [{}]({})",
-                            prop.documentation, prop.documentation
+                            property.documentation, property.documentation
                         ))
                         .to_owned(),
                 );
-                new_method.add_parameter(Parameter::new(prop_name, &type_));
+                new_method.add_parameter(Parameter::new(property_name, &type_));
 
-                prop_name.as_str()
+                property_name.as_str()
             })
             .collect::<Vec<&str>>();
 
@@ -238,14 +245,12 @@ fn main() {
     let spec_bytes = fs::read(spec_path).unwrap();
     let spec: Value = serde_json::from_slice(&spec_bytes).unwrap();
 
-    let property_types: PropertyTypes =
-        serde_json::from_value(spec["PropertyTypes"].clone()).unwrap();
-    let resource_types: PropertyTypes =
-        serde_json::from_value(spec["ResourceTypes"].clone()).unwrap();
+    let property_types: Types = serde_json::from_value(spec["PropertyTypes"].clone()).unwrap();
+    let resource_types: Types = serde_json::from_value(spec["ResourceTypes"].clone()).unwrap();
 
-    let types: PropertyTypes = property_types.into_iter().chain(resource_types).collect();
+    let types: Types = property_types.into_iter().chain(resource_types).collect();
 
-    let module = build_property_types(&types);
+    let module = build_types(&types);
 
     let src_code = module.generate();
 
