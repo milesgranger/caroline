@@ -92,7 +92,10 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> impl Iterator<Item = 
             _struct.add_field(
                 Field::new(prop_name, &prop.primitive_type.as_rust_ty().to_string())
                     .set_is_pub(true)
-                    .add_doc(format!("/// Official documentation: [{}]({})", prop.documentation, prop.documentation))
+                    .add_doc(format!(
+                        "/// Official documentation: [{}]({})",
+                        prop.documentation, prop.documentation
+                    ))
                     .to_owned(),
             );
         }
