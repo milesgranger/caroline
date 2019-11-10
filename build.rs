@@ -55,6 +55,12 @@ pub struct Property {
     primitive_type: PrimitiveType,
     #[serde(alias = "UpdateType")]
     update_type: UpdateType,
+    #[serde(alias = "Type")]
+    type_: Option<String>,
+    #[serde(alias = "ItemType")]
+    item_type: Option<String>,
+    #[serde(alias = "PrimitiveItemType")]
+    primitive_item_type: Option<String>
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -67,32 +73,63 @@ pub struct PropertyType {
 
 type PropertyTypes = HashMap<String, PropertyType>;
 
-/// Get the last segment of the module path, which is the struct name.
-pub fn struct_mod_n_name(path: &str) -> (String, String) {
-    let s = path.split("::").collect::<Vec<&str>>();
-    if s.len() > 2 {
-        (
-            s[s.len() - 2].replace('.', ""),
-            s[s.len() - 1].replace('.', ""),
-        )
-    } else {
-        ("AWS".to_owned(), s[s.len() - 1].replace('.', ""))
+pub struct TypeMetadata {
+    pub module_path: Vec<String>,
+    pub struct_name: String,
+    pub is_sub_property: bool,
+}
+
+impl<'a> From<&'a str> for TypeMetadata {
+    fn from(path: &str) -> Self {
+        /*
+        Can get this: AWS::EMR::Cluster or something like this: AWS::EMR::Cluster.VolumeSpecification
+
+        Both should have the module path as AWS::EMR::Cluster
+        */
+
+        let s = path.split("::").collect::<Vec<&str>>();
+
+        let module_path: Vec<String> = s[0..s.len()]
+            .iter()
+            .map(|module| {
+                // If it's the last element, ie. EMR::Cluster.VolumeSpecification
+                // we want the module name for this section to be 'Cluster', this is the module
+                // `VolumeSpecification` will be defined.
+                if module.contains('.') {
+                    module.split('.').take(1).last().unwrap().to_string()
+                } else {
+                    module.to_string()
+                }
+            })
+            .collect();
+        let struct_name = s[s.len() - 1].split('.').last().unwrap().to_string();
+
+        Self {
+            module_path,
+            struct_name,
+            is_sub_property: path.contains('.'),
+        }
     }
 }
 
-pub fn build_property_types(prop_types: &PropertyTypes) -> impl Iterator<Item = Module> + '_ {
-    let mut modules: HashMap<String, Module> = HashMap::new();
+/// Get the last segment of the module path, which is the struct name.
+
+pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
+    let mut parent_module = Module::new("AWS")
+        .set_is_pub(true)
+        .add_attribute("#![allow(unused_imports, non_snake_case)]")
+        .to_owned();
 
     prop_types.iter().for_each(|(prop_type_name, prop_type)| {
-        let (mod_name, struct_name) = struct_mod_n_name(prop_type_name);
+        let meta = TypeMetadata::from(prop_type_name.as_str());
 
-        let mut strct = Struct::new(&struct_name).set_is_pub(true).to_owned();
+        let mut strct = Struct::new(&meta.struct_name).set_is_pub(true).to_owned();
 
         // implement new(...) method
         let mut new_method = Function::new("new")
             .set_is_pub(true)
             .set_return_ty("Self")
-            .add_doc(format!("/// Create a new `{}`", &struct_name))
+            .add_doc(format!("/// Create a new `{}`", &meta.struct_name))
             .to_owned();
 
         let mut new_method_body = "Self { ".to_string();
@@ -101,8 +138,13 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> impl Iterator<Item = 
             .properties
             .iter()
             .map(|(prop_name, prop)| {
+                let type_ = prop
+                    .type_
+                    .clone()
+                    .unwrap_or_else(|| prop.primitive_type.as_rust_ty().to_string());
+
                 strct.add_field(
-                    Field::new(prop_name, &prop.primitive_type.as_rust_ty().to_string())
+                    Field::new(prop_name, &type_)
                         .set_is_pub(true)
                         .add_doc(format!(
                             "/// Official documentation: [{}]({})",
@@ -110,10 +152,7 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> impl Iterator<Item = 
                         ))
                         .to_owned(),
                 );
-                new_method.add_parameter(Parameter::new(
-                    prop_name,
-                    &prop.primitive_type.as_rust_ty().to_string(),
-                ));
+                new_method.add_parameter(Parameter::new(prop_name, &type_));
 
                 prop_name.as_str()
             })
@@ -123,21 +162,33 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> impl Iterator<Item = 
         new_method_body.push_str("}");
         new_method.set_body(new_method_body);
 
-        let module = modules
-            .entry(mod_name.clone())
-            .or_insert(
-                Module::new(mod_name.clone())
-                    .add_use_statement("use serde_json::Value;")
-                    .set_is_pub(true)
-                    .to_owned(),
-            )
-            .add_struct(strct)
-            .add_impl(Impl::new(struct_name).add_function(new_method).to_owned())
-            .to_owned();
+        // Get or create the nested submodule this struct should live.
+        let module = meta
+            .module_path
+            .iter()
+            .fold(&mut parent_module, |md, mod_name| {
+                match md.get_submodule(mod_name).is_some() {
+                    true => md.get_submodule_mut(mod_name).unwrap(),
+                    false => {
+                        md.add_submodule(
+                            Module::new(mod_name.clone())
+                                .add_use_statement("use serde_json::Value;")
+                                .set_is_pub(true)
+                                .to_owned(),
+                        );
+                        md.get_submodule_mut(mod_name).unwrap()
+                    }
+                }
+            });
 
-        modules.insert(mod_name, module.to_owned());
+        module.add_struct(strct).add_impl(
+            Impl::new(meta.struct_name)
+                .add_function(new_method)
+                .to_owned(),
+        );
     });
-    modules.into_iter().map(|(_, m)| m)
+
+    parent_module
 }
 
 fn main() {
@@ -152,14 +203,7 @@ fn main() {
     let property_types: PropertyTypes =
         serde_json::from_value(spec["PropertyTypes"].clone()).unwrap();
 
-    let mut module = Module::new("AWS")
-        .set_is_pub(true)
-        .add_attribute("#![allow(unused_imports, non_snake_case)]")
-        .to_owned();
-
-    for s in build_property_types(&property_types) {
-        module.add_submodule(s);
-    }
+    let module = build_property_types(&property_types);
 
     let src_code = module.generate();
 
