@@ -76,7 +76,7 @@ pub fn struct_mod_n_name(path: &str) -> (String, String) {
             s[s.len() - 1].replace('.', ""),
         )
     } else {
-        ("DEFAULT".to_owned(), s[s.len() - 1].replace('.', ""))
+        ("AWS".to_owned(), s[s.len() - 1].replace('.', ""))
     }
 }
 
@@ -86,19 +86,42 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> impl Iterator<Item = 
     prop_types.iter().for_each(|(prop_type_name, prop_type)| {
         let (mod_name, struct_name) = struct_mod_n_name(prop_type_name);
 
-        let mut _struct = Struct::new(struct_name).set_is_pub(true).to_owned();
+        let mut strct = Struct::new(&struct_name).set_is_pub(true).to_owned();
 
-        for (prop_name, prop) in &prop_type.properties {
-            _struct.add_field(
-                Field::new(prop_name, &prop.primitive_type.as_rust_ty().to_string())
-                    .set_is_pub(true)
-                    .add_doc(format!(
-                        "/// Official documentation: [{}]({})",
-                        prop.documentation, prop.documentation
-                    ))
-                    .to_owned(),
-            );
-        }
+        // implement new(...) method
+        let mut new_method = Function::new("new")
+            .set_is_pub(true)
+            .set_return_ty("Self")
+            .add_doc(format!("/// Create a new `{}`", &struct_name))
+            .to_owned();
+
+        let mut new_method_body = "Self { ".to_string();
+
+        let inner_self = prop_type
+            .properties
+            .iter()
+            .map(|(prop_name, prop)| {
+                strct.add_field(
+                    Field::new(prop_name, &prop.primitive_type.as_rust_ty().to_string())
+                        .set_is_pub(true)
+                        .add_doc(format!(
+                            "/// Official documentation: [{}]({})",
+                            prop.documentation, prop.documentation
+                        ))
+                        .to_owned(),
+                );
+                new_method.add_parameter(Parameter::new(
+                    prop_name,
+                    &prop.primitive_type.as_rust_ty().to_string(),
+                ));
+
+                prop_name.as_str()
+            })
+            .collect::<Vec<&str>>();
+
+        new_method_body.push_str(&inner_self.join(", "));
+        new_method_body.push_str("}");
+        new_method.set_body(new_method_body);
 
         let module = modules
             .entry(mod_name.clone())
@@ -108,8 +131,10 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> impl Iterator<Item = 
                     .set_is_pub(true)
                     .to_owned(),
             )
-            .add_struct(_struct)
+            .add_struct(strct)
+            .add_impl(Impl::new(struct_name).add_function(new_method).to_owned())
             .to_owned();
+
         modules.insert(mod_name, module.to_owned());
     });
     modules.into_iter().map(|(_, m)| m)
@@ -127,7 +152,10 @@ fn main() {
     let property_types: PropertyTypes =
         serde_json::from_value(spec["PropertyTypes"].clone()).unwrap();
 
-    let mut module = Module::new("AWS").set_is_pub(true).to_owned();
+    let mut module = Module::new("AWS")
+        .set_is_pub(true)
+        .add_attribute("#![allow(unused_imports, non_snake_case)]")
+        .to_owned();
 
     for s in build_property_types(&property_types) {
         module.add_submodule(s);
