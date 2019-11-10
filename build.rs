@@ -115,7 +115,7 @@ impl<'a> From<&'a str> for TypeMetadata {
 /// Get the last segment of the module path, which is the struct name.
 
 pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
-    let mut parent_module = Module::new("AWS")
+    let mut parent_module = Module::new("PropertyTypes")
         .set_is_pub(true)
         .add_attribute("#![allow(unused_imports, non_snake_case)]")
         .to_owned();
@@ -210,7 +210,7 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
 
                         // `Tag` struct is special
                         if &meta.struct_name != "Tag" {
-                            m.add_use_statement("use crate::AWS::Tag::Tag;");
+                            m.add_use_statement("use crate::aws::PropertyTypes::Tag::Tag;");
                         }
 
                         md.add_submodule(m);

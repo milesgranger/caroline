@@ -1,6 +1,4 @@
-mod aws;
-
-pub use aws::*;
+pub mod aws;
 
 #[cfg(test)]
 mod tests {
