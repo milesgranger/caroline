@@ -129,6 +129,10 @@ pub fn build_types(types: &Types) -> Module {
         let mut strct = Struct::new(&meta.struct_name)
             .set_is_pub(true)
             .add_attribute("#[derive(Default, Clone)]")
+            .add_doc(format!(
+                "/// Official documentation: [{}]({})",
+                the_type.documentation, the_type.documentation
+            ))
             .to_owned();
 
         // implement new(...) method
