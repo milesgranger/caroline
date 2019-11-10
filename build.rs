@@ -152,7 +152,10 @@ fn main() {
     let property_types: PropertyTypes =
         serde_json::from_value(spec["PropertyTypes"].clone()).unwrap();
 
-    let mut module = Module::new("AWS").set_is_pub(true).to_owned();
+    let mut module = Module::new("AWS")
+        .set_is_pub(true)
+        .add_attribute("#![allow(unused_imports, non_snake_case)]")
+        .to_owned();
 
     for s in build_property_types(&property_types) {
         module.add_submodule(s);
