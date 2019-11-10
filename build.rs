@@ -240,8 +240,12 @@ fn main() {
 
     let property_types: PropertyTypes =
         serde_json::from_value(spec["PropertyTypes"].clone()).unwrap();
+    let resource_types: PropertyTypes =
+        serde_json::from_value(spec["ResourceTypes"].clone()).unwrap();
 
-    let module = build_property_types(&property_types);
+    let types: PropertyTypes = property_types.into_iter().chain(resource_types).collect();
+
+    let module = build_property_types(&types);
 
     let src_code = module.generate();
 
