@@ -123,7 +123,10 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
     prop_types.iter().for_each(|(prop_type_name, prop_type)| {
         let meta = TypeMetadata::from(prop_type_name.as_str());
 
-        let mut strct = Struct::new(&meta.struct_name).set_is_pub(true).to_owned();
+        let mut strct = Struct::new(&meta.struct_name)
+            .set_is_pub(true)
+            .add_attribute("#[derive(Default, Clone)]")
+            .to_owned();
 
         // implement new(...) method
         let mut new_method = Function::new("new")
@@ -138,7 +141,7 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
             .properties
             .iter()
             .map(|(prop_name, prop)| {
-                let type_ = match prop.type_.as_ref().map(|v| v.as_str()) {
+                let mut type_ = match prop.type_.as_ref().map(|v| v.as_str()) {
                     Some("List") => format!(
                         "Vec<{}>",
                         prop.item_type
@@ -166,6 +169,11 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
                     Some(a) => a.to_string(),
                     None => "String".to_string(),
                 };
+
+                // If this param is not required.
+                if !prop.required {
+                    type_ = format!("Option<{}>", type_);
+                }
 
                 strct.add_field(
                     Field::new(prop_name, &type_)
