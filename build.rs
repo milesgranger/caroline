@@ -167,7 +167,7 @@ pub fn build_property_types(prop_types: &PropertyTypes) -> Module {
                             })
                     ),
                     Some(a) => a.to_string(),
-                    None => "String".to_string(),
+                    None => prop.primitive_type.as_rust_ty().to_string(),
                 };
 
                 // If this param is not required.
