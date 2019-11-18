@@ -129,7 +129,7 @@ pub fn build_types(types: &Types) -> Module {
         let mut strct = Struct::new(&meta.struct_name)
             .set_is_pub(true)
             .add_attribute("#[derive(Default, Clone, Builder, Debug, Serialize, Deserialize)]")
-            .add_attribute("#[builder(setter(into, strip_option))]")
+            .add_attribute("#[builder(default, setter(into, strip_option))]")
             .add_doc(format!(
                 "/// Official documentation: [{}]({})",
                 the_type.documentation, the_type.documentation
