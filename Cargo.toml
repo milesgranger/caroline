@@ -9,10 +9,12 @@ build = "build.rs"
 
 [dependencies]
 serde_json = "1.0"
+derive_builder = "0.9.0"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
 
 
 [build-dependencies]
-#proffer = { path = "./../proffer", version = "1.0.0-rc1" }
 proffer = { git = "https://github.com/milesgranger/proffer", branch = "master" }
-serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_json = "1.0"
+derive_builder = "0.9.0"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
