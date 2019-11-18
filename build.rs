@@ -128,7 +128,7 @@ pub fn build_types(types: &Types) -> Module {
 
         let mut strct = Struct::new(&meta.struct_name)
             .set_is_pub(true)
-            .add_attribute("#[derive(Default, Clone, Builder, Debug)]")
+            .add_attribute("#[derive(Default, Clone, Builder, Debug, Serialize, Deserialize)]")
             .add_attribute("#[builder(setter(into, strip_option))]")
             .add_doc(format!(
                 "/// Official documentation: [{}]({})",
@@ -216,6 +216,7 @@ pub fn build_types(types: &Types) -> Module {
                     false => {
                         let mut m = Module::new(mod_name.clone())
                             .add_use_statement("use serde_json::Value;")
+                            .add_use_statement("use serde::{Serialize, Deserialize};")
                             .add_use_statement("use std::collections::HashMap;")
                             .add_use_statement("use derive_builder::Builder;")
                             .set_is_pub(true)
