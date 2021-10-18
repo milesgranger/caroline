@@ -207,10 +207,9 @@ pub fn build_types(types: &Types) -> Module {
         new_method.set_body(new_method_body);
 
         // Get or create the nested submodule this struct should live.
-        let module = meta
-            .module_path
-            .iter()
-            .fold(&mut parent_module, |md, mod_name| {
+        let module = meta.module_path.iter().enumerate().fold(
+            &mut parent_module,
+            |md, (mod_idx, mod_name)| {
                 match md.get_submodule(mod_name).is_some() {
                     true => md.get_submodule_mut(mod_name).unwrap(),
                     false => {
@@ -222,6 +221,14 @@ pub fn build_types(types: &Types) -> Module {
                             .set_is_pub(true)
                             .to_owned();
 
+                        // One module path down is the major resource, ie AWS::EC2
+                        // or AWS::Lambda, AWS::EMR
+                        if mod_idx == 1 {
+                            m.add_attribute(format!(
+                                r#"#[cfg(any(feature = "all", feature = "{}"))]"#,
+                                &mod_name.to_lowercase()
+                            ));
+                        }
                         // `Tag` struct is special
                         if &meta.struct_name != "Tag" {
                             m.add_use_statement("use crate::aws::types::Tag::Tag;");
@@ -231,7 +238,8 @@ pub fn build_types(types: &Types) -> Module {
                         md.get_submodule_mut(mod_name).unwrap()
                     }
                 }
-            });
+            },
+        );
 
         module.add_struct(strct).add_impl(
             Impl::new(meta.struct_name)
